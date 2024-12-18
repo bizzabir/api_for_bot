@@ -13,24 +13,52 @@ DB_CONFIG = {
     "database": "sakila"
 }
 
-# Pydantic model for input
+# Pydantic model for POST input
 class QueryRequest(BaseModel):
     query: str
 
-# API to execute a MySQL query
-@app.post("/")
+# Function to establish database connection
+def get_connection():
+    try:
+        return mysql.connector.connect(**DB_CONFIG)
+    except Error as e:
+        print(f"Error connecting to database: {e}")
+        return None
+
+# GET endpoint to retrieve all actors
+@app.get("/actors/")
+def get_actors():
+    """Retrieve all actors from the database."""
+    try:
+        connection = get_connection()
+        if connection is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        cursor = connection.cursor(dictionary=True)  # Dictionary cursor for JSON-like output
+        cursor.execute("SELECT actor_id, first_name, last_name FROM actor")
+        results = cursor.fetchall()
+
+        cursor.close()
+        connection.close()
+
+        return {"success": True, "data": results}
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve actors")
+
+# POST endpoint to execute a dynamic query
+@app.post("/execute-query/")
 async def execute_query(request: QueryRequest):
     try:
-        # Establish database connection
-        connection = mysql.connector.connect(**DB_CONFIG)
-        cursor = connection.cursor(dictionary=True)  # Use dictionary=True for JSON-friendly output
+        connection = get_connection()
+        if connection is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
 
-        # Execute the query
+        cursor = connection.cursor(dictionary=True)
         cursor.execute(request.query)
-        # Fetch all results
         result = cursor.fetchall()
 
-        # Close connection
         cursor.close()
         connection.close()
 
