@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import mysql.connector
 from mysql.connector import Error
 
@@ -13,19 +12,21 @@ DB_CONFIG = {
     "database": "sakila"
 }
 
-# Pydantic model for POST input
-class QueryRequest(BaseModel):
-    query: str
-
-# Function to establish database connection
+# Create a reusable function to connect to the database
 def get_connection():
     try:
-        return mysql.connector.connect(**DB_CONFIG)
+        connection = mysql.connector.connect(**DB_CONFIG)
+        return connection
     except Error as e:
         print(f"Error connecting to database: {e}")
         return None
 
-# GET endpoint to retrieve all actors
+
+@app.get("/")
+def read_root():
+    return {"message": "Welcome to the Sakila API!"}
+
+
 @app.get("/actors/")
 def get_actors():
     """Retrieve all actors from the database."""
@@ -34,37 +35,56 @@ def get_actors():
         if connection is None:
             raise HTTPException(status_code=500, detail="Database connection failed")
 
-        cursor = connection.cursor(dictionary=True)  # Dictionary cursor for JSON-like output
+        cursor = connection.cursor(dictionary=True)
         cursor.execute("SELECT actor_id, first_name, last_name FROM actor")
         results = cursor.fetchall()
-
         cursor.close()
         connection.close()
-
-        return {"success": True, "data": results}
+        return results
 
     except Exception as e:
         print(f"Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to retrieve actors")
 
-# POST endpoint to execute a dynamic query
-@app.post("/execute-query/")
-async def execute_query(request: QueryRequest):
+
+@app.get("/actor/{actor_id}")
+def get_actor(actor_id: int):
+    """Retrieve details of a specific actor by ID."""
     try:
         connection = get_connection()
         if connection is None:
             raise HTTPException(status_code=500, detail="Database connection failed")
 
         cursor = connection.cursor(dictionary=True)
-        cursor.execute(request.query)
-        result = cursor.fetchall()
-
+        cursor.execute("SELECT actor_id, first_name, last_name FROM actor WHERE actor_id = %s", (actor_id,))
+        result = cursor.fetchone()
         cursor.close()
         connection.close()
 
-        return {"success": True, "data": result}
+        if result is None:
+            raise HTTPException(status_code=404, detail="Actor not found")
+        return result
 
-    except Error as e:
-        return {"success": False, "error": str(e)}
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve actor")
+
+
+@app.get("/movies/")
+def get_movies():
+    """Retrieve all movies (films) from the database."""
+    try:
+        connection = get_connection()
+        if connection is None:
+            raise HTTPException(status_code=500, detail="Database connection failed")
+
+        cursor = connection.cursor(dictionary=True)
+        cursor.execute("SELECT film_id, title, description FROM film")
+        results = cursor.fetchall()
+        cursor.close()
+        connection.close()
+        return results
+
+    except Exception as e:
+        print(f"Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve movies")
